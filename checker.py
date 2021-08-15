@@ -1,18 +1,55 @@
+from random import seed
 import sheets
 import utils
 
+def totalAsset(sheet: sheets.Sheet): # 總資產
+    bs = sheet.getBalanceSheet()
+
+    totalAsset = utils.tryOrError(bs, '1XXX', sheet.cycs)
+    return totalAsset
+
+def intangibleAssetRate(sheet: sheets.Sheet): # 無形資產比例
+    bs = sheet.getBalanceSheet()
+
+    totalAsset = utils.tryOrError(bs, '1XXX', sheet.cycs)
+    intanAsset = utils.tryOrZero(bs, '1780', sheet.cycs)
+
+    intangibleAssetRate = intanAsset / totalAsset
+    return intangibleAssetRate
+
+def idleAssetRate(sheet: sheets.Sheet):
+    # 閒置資產比例
+    # 1780: 無形資產、1920: 存出保證金、1460: 待出售非流動資產(或處分群組)淨額、1760: 投資性不動產淨額、1840: 遞延所得稅資產
+    # <5%
+    bs = sheet.getBalanceSheet()
+
+    totalAsset = utils.tryOrError(bs, '1XXX', sheet.cycs)
+    intanAsset = utils.tryOrZero(bs, '1780', sheet.cycs)
+    refundDep = utils.tryOrZero(bs, '1920', sheet.cycs)
+    noncurAssetForSale = utils.tryOrZero(bs, '1460', sheet.cycs)
+    investProp = utils.tryOrZero(bs, '1760', sheet.cycs)
+    deferTaxAsset = utils.tryOrZero(bs, '1840', sheet.cycs)
+
+    idleAsset = intanAsset + refundDep + noncurAssetForSale + investProp + deferTaxAsset
+    idleAssetRate = idleAsset / totalAsset
+    return idleAssetRate
+
+
 def netProfitGrowth(sheet: sheets.Sheet): # 淨利成長率
     iss = sheet.getIncomeStatement()
+
     netProfitGrowth = (iss['8200'][sheet.cycd] - iss['8200'][sheet.lycd]) / iss['8200'][sheet.lycd]
     return netProfitGrowth
 
 def revenueGrowth(sheet: sheets.Sheet): # 營收成長率
     iss = sheet.getIncomeStatement()
+
     revenueGrowth = (iss['4000'][sheet.cycd] - iss['4000'][sheet.lycd]) / iss['4000'][sheet.lycd]
     return revenueGrowth
 
-def debtRate(sheet: sheets.Sheet): # 負債比率
+def debtRate(sheet: sheets.Sheet): # 負債比例
     bs = sheet.getBalanceSheet()
+
     debt = utils.tryOrError(bs, '2XXX', sheet.cycs)
     asset = utils.tryOrError(bs, '1XXX', sheet.cycs)
 
@@ -21,6 +58,7 @@ def debtRate(sheet: sheets.Sheet): # 負債比率
 
 def currentRatio(sheet: sheets.Sheet): # 流動比率
     bs = sheet.getBalanceSheet()
+
     currentAsset = utils.tryOrError(bs, '11XX', sheet.cycs)
     currentDebt = utils.tryOrError(bs, '21XX', sheet.cycs)
 
@@ -74,3 +112,28 @@ def daysInventoryOutstanding(sheet: sheets.Sheet): # 存貨週轉天數 => 關�
 
     daysInventoryOutstanding = inventory / operCost * days
     return daysInventoryOutstanding
+
+# 負債比高的話，要看流動負債確認有沒有還款壓力，還款壓力: 公司債 > 應付票據 > 銀行借款 > 應付員工 > 應付帳款/費用 > 其他
+
+def bankLoanRatio(sheet: sheets.Sheet): # 銀行借款（流動比） = 2100: 短期借款、2322: 一年或一營業週期內到期之銀行長期借款、2150: 應付票據（大部分是銀行）
+    bs = sheet.getBalanceSheet()
+
+    currentAsset = utils.tryOrError(bs, '11XX', sheet.cycs)
+    shortLoan = utils.tryOrZero(bs, '2100', sheet.cycs)
+    oneYearLongLoan = utils.tryOrZero(bs, '2322', sheet.cycs)
+    notePay = utils.tryOrZero(bs, '2150', sheet.cycs)
+
+    bankLoan = shortLoan + oneYearLongLoan + notePay
+    bankLoanRatio = bankLoan / currentAsset
+    return bankLoanRatio
+
+def corporateBondRatio(sheet: sheets.Sheet): # 公司債（流動比） = 2321: 一年或一營業週期內到期或執行賣回權公司債，發現有公司債且負債比、流動比不佳就撤
+    bs = sheet.getBalanceSheet()
+
+    currentAsset = utils.tryOrError(bs, '11XX', sheet.cycs)
+    corporateBond = utils.tryOrZero(bs, '2321', sheet.cycs)
+
+    corporateBondRatio = corporateBond / currentAsset
+    return corporateBondRatio
+
+
