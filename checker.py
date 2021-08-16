@@ -1,3 +1,4 @@
+from logging import RootLogger
 from random import seed
 import sheets
 import utils
@@ -34,18 +35,91 @@ def idleAssetRate(sheet: sheets.Sheet):
     idleAssetRate = idleAsset / totalAsset
     return idleAssetRate
 
+# def operatingProfit(sheet: sheets.Sheet):
+#     iss = sheet.getIncomeStatement()
 
-def netProfitGrowth(sheet: sheets.Sheet): # 淨利成長率
+#     operatingProfit = utils.tryOrError(iss, '6900', sheet.cyfd)
+#     return operatingProfit
+
+# def profitBeforeTax(sheet: sheets.Sheet):
+#     iss = sheet.getIncomeStatement()
+
+#     profitBeforeTax = utils.tryOrError(iss, '7900', sheet.cyfd)
+#     return profitBeforeTax
+
+def operatingProfitProportion(sheet: sheets.Sheet): # 營業利益 / 稅前淨利 => 看獲利乾不乾淨，有沒有為了改善獲利賣股票、不動產等業外收入
     iss = sheet.getIncomeStatement()
 
-    netProfitGrowth = (iss['8200'][sheet.cycd] - iss['8200'][sheet.lycd]) / iss['8200'][sheet.lycd]
+    operatingProfit = utils.tryOrError(iss, '6900', sheet.cyfd)
+    profitBeforeTax = utils.tryOrError(iss, '7900', sheet.cyfd)
+
+    operatingProfitRate = operatingProfit / profitBeforeTax
+    return operatingProfitRate
+
+def netProfitGrowth(sheet: sheets.Sheet): # 稅後淨利成長率，要高於營收成長
+    iss = sheet.getIncomeStatement()
+
+    currNetProfit = utils.tryOrError(iss, '8200', sheet.cyfd)
+    lastNetProfit = utils.tryOrError(iss, '8200', sheet.lyfd)
+
+
+    netProfitGrowth = (currNetProfit - lastNetProfit) / lastNetProfit
     return netProfitGrowth
 
-def revenueGrowth(sheet: sheets.Sheet): # 營收成長率
+def revenueGrowth(sheet: sheets.Sheet): # 營收成長率，觀察穩定性: 不管景氣好或不好贏都不跌，表示穩定（1. 同業比較 2. 景氣?）
     iss = sheet.getIncomeStatement()
 
-    revenueGrowth = (iss['4000'][sheet.cycd] - iss['4000'][sheet.lycd]) / iss['4000'][sheet.lycd]
+    currRevenue = utils.tryOrError(iss, '4000', sheet.cyfd)
+    lastRevenue = utils.tryOrError(iss, '4000', sheet.lyfd)
+
+    revenueGrowth = (currRevenue - lastRevenue) / lastRevenue
     return revenueGrowth
+
+def sellingExpense(sheet: sheets.Sheet): # 推銷費用（看產業，賣技術還是賣形象?）=> b2b推銷費用不應該高。反應市場力度（1. 同業比較）
+    iss = sheet.getIncomeStatement()
+
+    sellingExpense = utils.tryOrZero(iss, '6100', sheet.cyfd)
+    return sellingExpense
+
+def sellingExpenseGrowth(sheet: sheets.Sheet):
+    iss = sheet.getIncomeStatement()
+
+    currSellingExpense = utils.tryOrZero(iss, '6100', sheet.cyfd)
+    lastSellingExpense = utils.tryOrZero(iss, '6100', sheet.lyfd)
+    
+    sellingExpenseGrowth = (currSellingExpense - lastSellingExpense) / lastSellingExpense
+    return sellingExpenseGrowth
+
+def rdExpense(sheet: sheets.Sheet): # 研發費用（看產業）=> 投資未來，有沒有因為業績不好，為了保持獲利而刪減研發費用?（推銷費用同概念）
+    iss = sheet.getIncomeStatement()
+
+    rdExpense = utils.tryOrZero(iss, '6300', sheet.cyfd)
+    return rdExpense
+
+def rdExpenseGrowth(sheet: sheets.Sheet):
+    iss = sheet.getIncomeStatement()
+
+    currRdExpense = utils.tryOrZero(iss, '6300', sheet.cyfd)
+    lastRdExpense = utils.tryOrZero(iss, '6300', sheet.lyfd)
+
+    rdExpenseGrowth = (currRdExpense - lastRdExpense) / lastRdExpense
+    return rdExpenseGrowth
+
+def administrativeExpense(sheet: sheets.Sheet): # 管理費用 => 本土商理論上會比較低（1. 同業比較合理性）
+    iss = sheet.getIncomeStatement()
+
+    adminExpense = utils.tryOrZero(iss, '6200', sheet.cyfd)
+    return adminExpense
+
+def grossMargin(sheet: sheets.Sheet): # 營業毛利率，對價格、生產效能的掌控力
+    # 靠產量、通路、專利、品牌優勢、提升生產效能等方法維持毛利率的公司，毛利率禁不起跌
+    iss = sheet.getIncomeStatement()
+
+    gross = utils.tryOrError(iss, '5950', sheet.cyfd)
+    revenue = utils.tryOrError(iss, '4000', sheet.cyfd)
+
+    grossMargin = gross / revenue
+    return grossMargin
 
 def debtRate(sheet: sheets.Sheet): # 負債比例
     bs = sheet.getBalanceSheet()
@@ -101,7 +175,7 @@ def daysSalesOutstanding(sheet: sheets.Sheet): # 應收帳款週轉天數 => 關
     daysSalesOutstanding = rec / revenue * days
     return daysSalesOutstanding
 
-def daysInventoryOutstanding(sheet: sheets.Sheet): # 存貨週轉天數 => 關鍵: 1-2個月合理，高於2個月經營力度有問題，低於1個月除非特殊行業或理由，否則有作假帳之嫌
+def daysInventoryOutstanding(sheet: sheets.Sheet): # 存貨週轉天數 => 關鍵: 1-2個月合理，高於2個月經營力度有問題，低於1個月除非特殊行業或理由，否則有作假帳之嫌（?）
     bs = sheet.getBalanceSheet()
     iss = sheet.getIncomeStatement()
 
@@ -115,7 +189,7 @@ def daysInventoryOutstanding(sheet: sheets.Sheet): # 存貨週轉天數 => 關�
 
 # 負債比高的話，要看流動負債確認有沒有還款壓力，還款壓力: 公司債 > 應付票據 > 銀行借款 > 應付員工 > 應付帳款/費用 > 其他
 
-def bankLoanRatio(sheet: sheets.Sheet): # 銀行借款（流動比） = 2100: 短期借款、2322: 一年或一營業週期內到期之銀行長期借款、2150: 應付票據（大部分是銀行）
+def bankLoanRatio(sheet: sheets.Sheet): # 銀行借款（流動比） = 2100: 短期借款 + 2322: 一年或一營業週期內到期之銀行長期借款 + 2150: 應付票據（大部分是銀行）
     bs = sheet.getBalanceSheet()
 
     currentAsset = utils.tryOrError(bs, '11XX', sheet.cycs)
@@ -127,7 +201,7 @@ def bankLoanRatio(sheet: sheets.Sheet): # 銀行借款（流動比） = 2100: �
     bankLoanRatio = bankLoan / currentAsset
     return bankLoanRatio
 
-def corporateBondRatio(sheet: sheets.Sheet): # 公司債（流動比） = 2321: 一年或一營業週期內到期或執行賣回權公司債，發現有公司債且負債比、流動比不佳就撤
+def corporateBondRatio(sheet: sheets.Sheet): # 公司債（流動比） = 2321: 一年或一營業週期內到期或執行賣回權公司債。發現有公司債且負債比、流動比不佳就撤
     bs = sheet.getBalanceSheet()
 
     currentAsset = utils.tryOrError(bs, '11XX', sheet.cycs)
@@ -136,4 +210,30 @@ def corporateBondRatio(sheet: sheets.Sheet): # 公司債（流動比） = 2321: 
     corporateBondRatio = corporateBond / currentAsset
     return corporateBondRatio
 
+def EPS(sheet: sheets.Sheet):
+    iss = sheet.getIncomeStatement()
+    bs = sheet.getBalanceSheet()
 
+    netProfit = utils.tryOrError(iss, '8200', sheet.cyfd) # 母公司（8610）?
+    shareCapital = utils.tryOrError(bs, '3100', sheet.cycs) 
+
+    shares = shareCapital / 10
+    eps = netProfit / shares
+    return eps
+
+def annualizedROE(sheet: sheets.Sheet): # 年化ROE
+    iss = sheet.getIncomeStatement()
+    bs = sheet.getBalanceSheet()
+
+    monthlyDuration = sheet.season * 3
+
+    netProfit = utils.tryOrError(iss, '8200', sheet.cyfd)
+    # premium = (utils.tryOrZero(bs, '3210', sheet.lyls) + utils.tryOrZero(bs, '3210', sheet.cycs)) / 2 # 期初末 資本公積-股本溢價
+    # retainEarning = (utils.tryOrError(bs, '3300', sheet.lyls) + utils.tryOrError(bs, '3300', sheet.cycs)) / 2 # 期初末 保留盈餘
+    shareHolderEquity = (utils.tryOrError(bs, '31XX', sheet.lyls) + utils.tryOrError(bs, '31XX', sheet.cycs)) / 2 # 期初末 母公司權益
+
+    # shareHolderEquity = premium + retainEarning
+    monthlyROE = (netProfit / shareHolderEquity) / monthlyDuration
+    
+    annualizedROE = monthlyROE * 12
+    return annualizedROE
